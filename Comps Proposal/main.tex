@@ -1,0 +1,194 @@
+\documentclass[10pt,twocolumn]{article}
+\usepackage{oxycomps}
+
+\bibliography{references}
+\pdfinfo{
+    /Title (Comp 390: Tetris Deep Q-Learning AI Proposal)
+    /Author (Christian Keaunui)
+}
+
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{wrapfig}
+\begin{document}
+
+\title{Senior Comps Proposal: Tetris Deep Q-Learning AI}
+\author{Christian Keaunui}
+\affiliation{Occidental College}
+\email{ckeaunui@oxy.edu}
+
+\maketitle
+
+
+\section{Introduction}
+
+The purpose of this project is to successfully create a Deep Q-learning model from scratch which can learn to play Tetris at a high level. This means no machine learning libraries will be used for the training of this model.  The computer will learn to play by iterating through game states making random moves until it can discover patterns it deems favorable.  The models end goal is to reach a score equivalent to a high-level Tetris competitor (Roughly 500,000 points).
+
+
+\section{Problem context}
+
+Of all the fields of computer science I have been introduced to, I find machine learning to be the most interesting.  I believe it will be fundamental in most jobs in the near future, and being an AI software developer is my current dream job.  However my experience is very shallow and I want to use my comps as a way to further explore the subject.  This project will consist of research across multiple different ML algorithms to determine which one is the most applicable, and then creating that algorithm from scratch to learn the fundamentals of how the model works.  The purpose of the code is to play Tetris at a high level, but the project as a whole will give me insight into what being an AI developer is like.  Through this project I hope to determine if I am as passionate about AI as I believe I am.
+
+\subsection{Relevant Information}
+Most people know the rules of Tetris already, but essentially the player is given a series of never-ending random piece which they have to organize as optimally as possible within the time frame.  The game is lost if pieces stack all the way to the top, but every time a row is filled with occupied tiles it will be deleted, making the stack shorter.  As lines are removed the player is awarded points which determines the quality of a run.  
+
+Understanding the manner in which the Tetris scoring system functions is also crucial for this project.  Each time a line is cleared the user is awarded points, but they are granted a bonus score multiplier for each additional line cleared in a single move.  This stacks up to a maximum potential of four lines cleared in one move which is called a Tetris.  These award lots of bonus points compared to clearing lines individually, but adds an element of danger with each level the stack grows.
+
+\begin{wrapfigure}{r}{0}
+    \includegraphics[scale=0.09]{Wall-Kick.png}
+    \caption{Right Wall Kick}
+\end{wrapfigure}
+
+\subsection{Nuances}
+One of the nuances this project has to deal with is the different versions of Tetris.  While the games core mechanics have always remained the same, each new version of Tetris varies in what maneuvers are possible to perform (see Figure 1).
+
+In earlier versions of Tetris the blue piece would not be able to rotate in this position.  This is because the piece rotates in its center, so trying to rotate it would cause one of the tiles to rotate off the screen. To make the game more playable a "wall kick" is coded in which shifts the piece horizontally until all tiles are back on the board.  In this case the blue piece would perform the illegal rotation about its center, pushing two of its tiles off the board.  The horizontal piece would then be shifted by two tiles to the left so all the tiles are still in the screen.
+
+Most versions of Tetris have this same feature to make the game more user friendly, but each version of the game that comes out implements their wall kick differently. To most users this is not noticeable, but at the extremes these minor changes can result in drastically different move sequences existing across versions (see Figure 2).
+
+\newpage
+\begin{wrapfigure}{r}{0}
+\includegraphics[scale=0.35]{Long Maneuver.png}
+\caption{}
+\end{wrapfigure}
+
+In this example a maneuver exclusive to select versions of Tetris can be seen. After the long thin piece reaches the bottom of the top hole, it can attempt to rotate about its center.  This will kick off the right wall shifting it left, but it will also kick it off of the horizontal ceiling causing the piece to be shifted both left and down. This gives the appearance of rotating about an axis located at one of its ends which is not possible in most versions.  Versions such as the flexible Super Rotation System (SRS) also allow pieces to be rotated left and right while some versions only allow right rotations.  This means that in specific versions this maneuver will only be possible in one direction. In the SRS version of Tetris, placing a long blue piece in the shown position is possible when this would not work in any other version.  This is one of several examples, and it shows that the version of Tetris that the computer trains on will have a large impact on the moves it is legally able to make.
+
+Aside from inconsistent mechanics, another important thing for the reader to understand is how many different possible games of Tetris there are.  The computer wants to analyse all possible board positions to see which ones are the best, but checking all board states is not possible.  The board is 10x21 tiles which is 210 different tiles each with an activated and deactivated state.  This means there are a total of 2\textsuperscript{210} different board layouts.  Many of these boards would be illegal but the computer would still analyse them, and even if it didn't there would still be far too many remaining legal boards to check them all.  As a result our model will have to estimate how good certain boards are rather than explicitly calculating its quality. 
+
+
+\section{Technical Background}
+
+Throughout this project many terms related to both the models algorithm and the Tetris game itself will be used. Below are definitions for each term and short descriptions of their usefulness.
+
+\subsection{Tetris Technical Terms}
+A "Tetris" is when four rows of a board are cleared at one time.  This is only possible when a blue 4x1 piece is placed vertically into a one-wide hole
+A "Tetromino" is an individual Tetris piece. All pieces are Tetrominos so the term does not reference any one particular shape
+A "Wall Kick" is when the piece is bumped horizontally from rotating into an adjacent piece.  For example, if a 4x1 piece is vertically aligned against the far left wall, rotating it would move some of the tiles off the board (since the rotation axis is in the center of the piece).  To prevent this we shift the blue piece to the right until no pieces are off the board.  
+A "Hard Drop" is when the piece is dropped all the way down in its current position by pressing the space bar.  This places the piece in the gray area it outlines on the board.
+A "Soft Drop" is when the piece is lowered by one row by clicking the down key. Soft dropping awards one point to the score per line dropped
+
+\subsection{Model/Algorithm Technical Terms}
+An "Agent" is the current entity which represents the model. The agent will be the bot that trains to play the game.
+An "Environment" is the world that the agent is put in, with some scenario that the model has to overcome.
+A "Reward" is a short-term return value instantly given to the agent when they perform certain tasks. The values awarded range from +1 for a favorable task and -1 for unfavorable tasks.  
+A "State" is the current cohesive description of the environments components.  For Tetris it will compose of the boards current tile distribution (coordinates of free and occupied tiles), the current active piece, the stored piece, a Boolean representing if the active piece can be stored, and the next upcoming piece(s).  
+A "Value" is the expected long-term reward that the agent will receive, which the computer compares with its short-term reward.
+A "Value Function" is a function which specifies the reward an agent will get from a given state. This combines short and long term rewards
+A "Q-Value" is similar to a value but also requires the current action. The value determines how good an action is overall while the q-value determines how good an action is in the environments current state.  Q-values are represented by Q(S, A) where S is the current state and A is the action.  The resulting Q-value represents the agents estimation for how good A is given S.  
+
+\subsection{Algorithmic Approach}
+
+This project will use a deep Q-learning algorithm to decide the best action at a given state.  The model will use the following function (1) to compare state-action pairs and determine which move is the best.
+
+\begin{equation}
+\includegraphics[scale=0.28]{NeuralNetAlgorithm1.png}
+\end{equation}
+
+This functions goal is to select actions which maximizes its own future rewards. The term Q*(s,a) represents the optimal action-value function given an action 'a' and a state 's' at time 't'.  Pi is a policy mapping sequence to actions, which determines which known action is best suited for the environments current state.  This same process is then repeated for every sub-sequential state. Finally, $(x,y,\gamma)$ is a discount factor which is used to reduce the reward value with respect to 't'.
+
+The optimal action-value function follows the Bellman equations identity which is based on the following process: If for each possible state we know the optimal reward value of all actions, the best choice would be the action which results in the maximum value for r + $(x,y,\gamma)$ Q*(s\textsuperscript{1}, a\textsuperscript{1}).  Thus:
+
+\begin{equation}
+\includegraphics[scale=0.45]{NeuralNetMax.png}
+\end{equation}
+
+Essentially what this function (2) does is take a boards current state and assigns an immediate reward value to each actions resulting state.  This is a base reward which is the agents temporary indicator of how good that state is.  This estimation will be the average values of all potential paths from the current state.  As each subsequent path is explored and assigned more accurate values, the algorithm adjusts the values of previously assigned states.  This makes early state values dynamic, resulting in a wider range of explored paths.  
+
+The input data will consist of arrays each containing a boards state, action, reward, and next state.  Since the movement of the piece is not being trained, the action of the agent will simply be its end position.  An action could consist of multiple different individual keyboard actions to position the current piece correctly, but the algorithm ignores these steps in favor of solving where the piece should be placed
+
+Each array will then be passed into the neural network for training.  This training will follow a greedy-Epsilon model with a randomness coefficient of 0.05 - 0.10. Adding randomness gives the agent a chance to explore a non-optimal path and search for unexpected results.  This increases the chance at discovering a new best solution because it increases the amount of paths explored.  
+
+90-95\% of the time the computer will pick the path it currently believes to be optimal rather than picking a random path.  Each time it picks a path to explore, that decision is stored in a separate file containing all the computers choices.  This allows the computer to see how it has changed its priorities over time as it explores the states further.  By seeing past decisions the computer can recalculate a states value to make it more accurate if it has not been adjusted recently.  As this file grows there will be too much data to read through, so a sample of it will be used instead for training. This will assist in the training because it will give an assortment of state-action pairs from different times during training, allowing the agent to train on results that may not be considered optimal currently.  This method is called an experience replay.  As the experience replay grows the model should get more accurate because it has more defined values for states.  The bot determines the current states value by estimating the values of each consecutive possible state.  As these state values are defined, the amount of estimating the model has to do is reduced.  This is because it can see the values assigned to previous states in the experience replay, and then calculate the current state with these previously recorded values rather than estimations.
+
+
+\section{Prior Work}
+
+\subsection{DeepMind Technologies: Playing Atari with Deep Reinforcement Learning\\ \footnotesize\normalfont(https://arxiv.org/pdf/1312.5602.pdf)}
+
+This is an article from 2013 where a team of 7 DeepMind programmers used a deep learning model to play Atari. At the time this was a revolutionary development for machine learning, and the model was even able to beat an Atari professional in 3/7 different Atari 2600 games without any retraining required.  According to the article, this was the first time a deep learning model was able to "successfully learn control policies directly from high-dimensional sensory input using reinforcement leaning" (pg 1).  This means that all the computers input data was based off human senses, in this case vision.  This project has a very similar structure to my Tetris AI and the methods used in this paper heavily influenced my intended approach.
+
+One key component our projects will have in common is experience replays.  This stores an agents current trained state for future use after its original policy is forgotten. This allows the agent to store multiple different iterations of itself throughout the training process, allowing further training to be done at any state.  This will be useful if an agents training starts going poorly and needs to be restored to an old state.  This allows the user to assist in the models training which will theoretically result in a better performing agent
+
+Another step of my project influenced by this article is the use of the optimal action-value function.  This follows the intuition of the Bellman Equation (see Equation 3). 
+
+\begin{equation}
+\includegraphics[scale=0.6]{Optimal action-value function.png}
+\end{equation}
+
+This assumes "if the optimal value Q*(s\textsuperscript{1}, a\textsuperscript{1}) of the sequence s\textsuperscript{1} at the next time-step was known for all possible actions a\textsuperscript{1}, then the optimal strategy is to select the action a\textsuperscript{1} maximising the expected value" (pg 2-3).  The idea is that the algorithm will use the Bellman Equation as an iterator to estimate the action-value function at each state.  As iterations tend towards infinity, the algorithms converge towards the optimal action-value function. 
+
+An issue with this is that the action-value sequence is calculated separately at each instance, so the algorithms will not successfully converge towards the optimal action-value function.  To overcome this the DeepMind team used a function approximator (Neural Network in this case) Q(s, a; $(x,y,\theta)$) ≈ Q*(s, a).  The neural net functions off a sequence of loss functions which is an expedited way of reaching the optimal action-value function. This approach worked very well for the DeepMind team and I believe a similar approach would significantly improve the performance of my Tetris agent.  The algorithmic details will be explained further in the Methods section.
+
+
+\subsection{Medium: Reinforcement Learning on Tetris \\
+\footnotesize\normalfont(https://medium.com/mlearning-ai/reinforcement-learning-on-tetris-707f75716c37)}
+
+This is an article published by Medium.com which is a Tetris bot they created with a reinforced learning algorithm.  This is very similar to my project, but differs in the algorithmic approach the user chose.  The figure below (4) shows the authors algorithmic approach
+
+\begin{figure}[h!]
+    \center
+    \includegraphics[scale=0.22]{Tet_Algorithm.jpeg}
+    \caption{}
+\end{figure}
+
+The first step the author described in their approach was to not train the computer how to move the pieces.  The movement actions of the computer {left, right, soft-drop, hard-drop, store, rotate} are not important since this is considered a trivial aspect of the game.  The difficulty comes from choosing where to place the piece rather than actually navigating it there, so to simplify the training the computers movement actions will be removed.  Instead the current piece is placed in every board position with a legal location and orientation, and then the computer looks at which board has the best result.  This makes it so the computer does not need to learn how to move the piece but can skip to learning where to place it.  This method will also be used in my model.  Such an approach does complicate the process of finding legal board states, but will significantly reduces training time and improve overall performance since there are less actions the computer needs to learn.
+
+The inputs start as a 2D array of the current board which each element representing a Boolean value indicating if a piece is stored at that location.  The 2D array is the condensed into a 1D array by having the first 10 values of the array representing that corresponding columns height (how high the highest piece is; see Figure 4).  
+
+
+\begin{figure}[h!]
+\includegraphics[scale=0.18]{Condensed_array.png}
+\caption{}
+\end{figure}
+
+The next 10 elements represent each columns lowest hole position, and the final array element is a Boolean representing if the piece can be stored. Storing a piece can only be done once before a piece must be placed to prevent stalling by swapping between pieces indefinitely.  This array is then passed into the neural net. This approach has many aspects which would be very beneficial to my project, such as simplifying the board into heights and holes in a 1D array.  Currently there are 2\textsuperscript{210} different possible board states (not all legal ones) which the computer could have to analyze. Reducing the boards 2d array into just its important features would reduce the computing time of each board state which would have a large impact on the final results.  While I do think this approach could perform well, I prefer the approach the DeepMind article took. This model uses information such as board height and hole positions to determine a boards quality but a lot of this information seems redundant.  In some situations these additional details could be useful for training, but with limited computing power the amount of data passed is a large factor in the projects overall success. By simplifying the data the model should have an easier time training itself.
+
+
+\bigskip
+\section*{\centering{Methods}}
+\bigskip
+
+
+
+
+\bigskip
+\section*{\centering{Evaluation Metrics}}
+\bigskip
+
+
+To evaluate the success of this project, I will be using the models highest scoring run.  I will then compare this score to standard scores reached by real players to get an understanding of what tier my model could compete at.
+
+The maximum score that can be reached is 999,999 which has only been achieved by 8 people ever.  This is incredibly hard to achieve so this would be far too ambitious as a goal.  Very good Tetris players are able to score around 500,000 - 600,000 points, and new players tend to score around 100,000 points. I want this bot to be able to play the game well, but perfecting the game is too unrealistic.  As a result, i believe if my bot can reach a score of 500,000+ then the project was a success.  Anything over this would be exceeding all expectations, but the minimum score I would be okay with achieving would be 375,000.  Anything below this and the computer is clearly not performing at a high level, which would result in the project being only a partial success.  Anything lower than 375,000 would be considered very poor performance, and below 100,000 would be complete failure.  
+
+An alternative metric to test the success of the model would be total lines cleared.  This would show how long the computer is able to survive in a free-play mode which would indicate how strong the agent became in training.  However this method is not as effective as measuring the games score for the following reasons.   
+
+First, the primary quantitative results Tetris players care about has always been the score.  Tetris world championships and other tournaments have players compete for the highest score, so using this metric would allow my model to be more easily compared to real players.  
+
+Another reason this metric is not as useful is because there is a crucial mechanic in Tetris scoring which would be overlooked.  This is clearing multiple lines at a time.  If we checked total lines cleared then there would be essentially no difference between getting a Tetris and clearing four lines individually. However each additional line cleared in a single move adds a multiplier to the score acquired.  The inclusion of this small feature drastically changes the training because the new best strategy would be to get a Tetris every time.  However this is not always possible, so each move the computer will have to decide between stacking pieces towards a Tetris and clearing fewer lines to ensure its survival.  Without this mechanic the bots training would be drastically different, and since this key mechanic only applies to the scoring it follows that it would also be the best metric for measuring success.
+
+
+\section*{\centering{Ethical Considerations}}
+
+
+Throughout this semester we have looked at ways that data gathering and usage can impact people, with a focus on how biased data can marginalize and misrepresent groups of people.  This is especially dangerous when data analysis is involved in any sort of social reforms.  This is often unintentional and a result of oversight.  To ensure my project does not contribute to this, I will be closely looking at each area of my project for any potential ethical issues I am overlooking.
+
+The first part of my project I have to look at is the end goal I want to accomplish.  This projects end goal is to create a machine learning algorithm which is able to play Tetris at a high level.  Tetris is a video game which is not involved in any sorts of potential potential power distribution.  In 2022 over 30 colleges were awarding scholarships to E-Sports (video game) teams. For any of these games, creating a bot presents the possibility of a team abusing it to discover an optimized strategy within a level.  This same event has already occurred in games such as chess, and today many chess competitions are decided by which competitors computer could calculate deeper theory. These are some potential examples of power distribution from Machine Learning in games, but for Tetris the same power distribution does not exist because of how old the game is.  Tetris is the most downloaded game of all time, but few to no competitions for serious stakes currently exist.  Because of this, I can safely assume my projects end goal will not result in any distribution of power or have any ethical concerns.
+
+To ensure the bot does not have any ethical concerns with its training, the data it will be using is self generated.  Even if the bot itself does not present any moral concerns, the source of data could have issues.  An example could be cases where data is gathered or distributed without a users consent. A recent example can be seen in Facebook selling user data to tech companies. For this project, the data will be self-generated so there will be no moral concerns with its background.  This projects algorithm learns through many trial and error runs, and finding patterns among the states it has explored.  As it plays more the database grows, and its training improves.  As a result I can confidently claim that the data itself has no ethical concerns.
+
+One area where my project could present issues is with its accessibility. I will upload my project to Github for anyone to observe and download, but the algorithms performance will likely be correlated to the users computer strength.  For people who do not own a strong computer the project will not show the same levels of success. This is because the computer analyses many different potential boards to discover favorable patterns, and better computers are able to analyse a larger quantity of board states in the same time. Furthermore if a user does not own a laptop but rather a tablet or iPad, my project will not even be available for download.  This is a large concern which I cannot avoid with my project, so to make it more accessible I will record the training process on my computer and upload it along with the source code.  This is not a perfect solution since many people will still not be able to interact with this project, but at least this will allow everyone to witness the algorithm training and playing the game.  
+
+My projects end methods and algorithms will be very transparent to the reader. Every step of this project will be visible, and no libraries will be used for training so the user will be able to witness the entire process. There will also be a Github README document which explains how all the components work so the user can better understand the process. The only parts that could be hard to observe are the hidden layers within my neural networks.  By nature these are not as transparent as other code, so actually observing these steps can be difficult.  However the way these layers function will be explained, and observing them in action can be done through analysing the data it trains on.
+
+There were also no concerns with consent since no people are involved in any step of this projects process.  The data is self-generated and the algorithm learns on its own data.  The bot does not impact people and cannot play a role in distributing information. The only part that does require consent is the downloading of this project.  A video will be viewable but the user has to intentionally download this project to their machine since there is no automatic download. Aside from this small step there are no aspects in this projects development which could involve requiring a users consent.
+
+Regardless of my projects performance the code will be posted to a public Github repository.  Downloads will be available at all times so no upkeep needs to be done for this projects distribution.  There will also not be any upkeep on the project itself because once the algorithm is coded it can be trained at any time.  New versions of Python may come out which are not compatible, or an improve ML algorithmic approach may present itself, but for the scope of this project there will be no upkeep.  The purpose is to achieve the best score I can given my current resources.  In the Github repository will be the untrained bot, a README file explaining how it works and how to try it out, and a video showing the training process in action.  The trained bot will also be uploaded to the repository if it is not too large, otherwise a video of its fully trained performance will be added in its place.
+
+Currently using technology is not the best way to play Tetris, but this will likely change as computers become more advanced.  The 2022 Tetris world champion is able to achieve a score of 1.28 million, which is much higher than what most Tetris bots can accomplish.  However as computers and computing power improves the potential for machine learning increases, and it likely wont be very long until an AI can beat the Tetris world champion. This project does not have any immoral steps in its process because the data and training are all self-generated.  The larger social impact this project could have would also not be exploitable or result in any change in power, and this project will be available for everyone to see.  For these reasons I believe my project can be completed in an ethical manner.  
+
+
+\section{Timeline}
+
+
+\end{document}
